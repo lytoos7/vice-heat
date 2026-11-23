@@ -2053,10 +2053,17 @@
   function getPoliceSpec(stars) {
     // 1..6 stars scaling; 6 stars is highest top speed and maximum count
     const counts = [0, 1, 3, 4, 5, 6, 8];
-    const speeds = [0, 185, 305, 345, 390, 430, 475];
+    const baseSpeeds = [0, 185, 260, 295, 345, 365, 415];
+    const pCar = state.player.car;
+    let topSpeed = baseSpeeds[stars] || 185;
+    if (pCar && stars > 0) {
+      // 1-3 stars slightly below player car top speed; 4-5 roughly equal; 6 slightly above
+      const ratios = [0, 0.78, 0.87, 0.93, 0.99, 1.01, 1.07];
+      topSpeed = Math.round(pCar.maxSpeed * (ratios[stars] || 0.85));
+    }
     return {
       maxCount: counts[stars] || 0,
-      topSpeed: speeds[stars] || 260,
+      topSpeed,
     };
   }
 
@@ -2730,9 +2737,68 @@
         }
 
         c.maxSpeed = spec.topSpeed;
-        // Chase player with simple obstacle avoidance
+        c.yieldTimer = Math.max(0, (c.yieldTimer || 0) - dt);
+
+        // Compute pursuit follow point behind or beside the player car (never straight into center)
+        let goalX = p.x;
+        let goalY = p.y;
+        const pCar = p.car;
+        if (pCar) {
+          const pFx = Math.cos(pCar.angle);
+          const pFy = Math.sin(pCar.angle);
+          const pRx = -pFy;
+          const pRy = pFx;
+          const slot = c.id % 5;
+          const offsets = [
+            { back: 92, side: 0 },
+            { back: 56, side: -58 },
+            { back: 56, side: 58 },
+            { back: 22, side: -72 },
+            { back: 22, side: 72 },
+          ];
+          const off = offsets[slot];
+          goalX = pCar.x - pFx * off.back + pRx * off.side;
+          goalY = pCar.y - pFy * off.back + pRy * off.side;
+        } else {
+          // On foot: approach a standoff ring beside the player rather than center
+          const awayAng = Math.atan2(c.y - p.y, c.x - p.x);
+          goalX = p.x + Math.cos(awayAng) * 58;
+          goalY = p.y + Math.sin(awayAng) * 58;
+        }
+
+        // Steering vector toward follow point + separation from other police cars
+        let steerX = goalX - c.x;
+        let steerY = goalY - c.y;
+        const goalDist = Math.hypot(steerX, steerY);
+        if (goalDist > 0.01) {
+          steerX /= goalDist;
+          steerY /= goalDist;
+        }
+
+        // Keep separation between police cars so they never stack into a blob
+        for (const other of state.cars) {
+          if (other === c || !other.isPolice) continue;
+          const sdx = c.x - other.x;
+          const sdy = c.y - other.y;
+          const sd = Math.hypot(sdx, sdy);
+          if (sd > 0.01 && sd < 96) {
+            const weight = ((96 - sd) / 96) * 2.1;
+            steerX += (sdx / sd) * weight;
+            steerY += (sdy / sd) * weight;
+          }
+        }
+
+        // If yielding after player pushed through, steer slightly aside from player
+        if (c.yieldTimer > 0 && pCar) {
+          const adx = c.x - pCar.x;
+          const ady = c.y - pCar.y;
+          const ad = Math.hypot(adx, ady) || 1;
+          steerX += (adx / ad) * 1.8;
+          steerY += (ady / ad) * 1.8;
+        }
+
         const targetAngle = Math.atan2(p.y - c.y, p.x - c.x);
-        let desired = targetAngle;
+        let desired = Math.atan2(steerY, steerX);
 
         // Probe ahead for buildings; steer around left/right if blocked
         const probeDist = 52;
@@ -2742,16 +2808,39 @@
         }
 
         const diff = wrapAngle(desired - c.angle);
-        const turnRate = stars === 1 ? c.turn * 0.65 : c.turn;
+        const turnRate = stars === 1 ? c.turn * 0.65 : c.turn * 1.08;
         c.angle = wrapAngle(c.angle + clamp(diff, -turnRate * dt, turnRate * dt));
 
-        // Slow down if player is on foot and very close (attempting bust)
-        const wantSpeed = (!p.car && dPlayer < 68) ? 38 : c.maxSpeed;
+        // Pace control: fall behind on long straights, close in during corners, never pile into player center
+        let wantSpeed = c.maxSpeed;
+        if (pCar) {
+          const pSpeed = Math.hypot(pCar.vx, pCar.vy);
+          const playerStraightFast = pSpeed > pCar.maxSpeed * 0.78 && pCar.driftAmount < 0.2;
+          if (playerStraightFast && stars < 6) {
+            wantSpeed *= 0.94;
+          }
+          if (c.yieldTimer > 0) {
+            wantSpeed *= 0.55;
+          } else if (dPlayer < 72) {
+            // Match player speed closely instead of ramming through their rear
+            wantSpeed = Math.min(wantSpeed, Math.max(85, pSpeed * 0.92));
+          } else if (goalDist < 55) {
+            wantSpeed = Math.min(wantSpeed, Math.max(95, pSpeed * 0.98));
+          }
+        } else if (dPlayer < 68) {
+          wantSpeed = 38;
+        }
+
         const curSpd = Math.hypot(c.vx, c.vy);
-        const accelRate = stars === 1 ? 1.6 : 3.2;
+        const accelRate = stars === 1 ? 1.5 : 2.5;
         const nextSpd = lerp(curSpd, wantSpeed, clamp(dt * accelRate, 0, 1));
-        c.vx = Math.cos(c.angle) * nextSpd;
-        c.vy = Math.sin(c.angle) * nextSpd;
+        if (c.yieldTimer > 0) {
+          c.vx = lerp(c.vx, Math.cos(c.angle) * nextSpd, clamp(dt * 3.0, 0, 1));
+          c.vy = lerp(c.vy, Math.sin(c.angle) * nextSpd, clamp(dt * 3.0, 0, 1));
+        } else {
+          c.vx = Math.cos(c.angle) * nextSpd;
+          c.vy = Math.sin(c.angle) * nextSpd;
+        }
         c.x += c.vx * dt;
         c.y += c.vy * dt;
 
@@ -2795,6 +2884,7 @@
     }
 
     // Car-to-car collisions
+    const playerAccelInput = !!(keys["w"] || keys["arrowup"] || keys["s"] || keys["arrowdown"]);
     for (let i = 0; i < state.cars.length; i++) {
       for (let j = i + 1; j < state.cars.length; j++) {
         const a = state.cars[i];
@@ -2802,35 +2892,82 @@
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy);
-        const minD = 34;
+        const bothPolice = a.isPolice && b.isPolice;
+        const minD = bothPolice ? 42 : 34;
         if (d > 0.01 && d < minD) {
           const nx = dx / d;
           const ny = dy / d;
-          const overlap = (minD - d) * 0.5;
-          a.x -= nx * overlap;
-          a.y -= ny * overlap;
-          b.x += nx * overlap;
-          b.y += ny * overlap;
-
+          const overlapTotal = minD - d;
           const relSpeed = Math.hypot(a.vx - b.vx, a.vy - b.vy);
-          if (relSpeed > 75 && (a === p.car || b === p.car)) {
+
+          const isPlayerPolice = (a === p.car && b.isPolice) || (b === p.car && a.isPolice);
+          if (isPlayerPolice) {
             const pCar = a === p.car ? a : b;
-            const other = a === p.car ? b : a;
-            pCar.hp = Math.max(5, pCar.hp - clamp(relSpeed * 0.04, 2, 16));
-            sfx.playCrash(relSpeed / 360);
-            addShake(clamp(relSpeed / 30, 3, 11));
-            spawnSparks((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 11, "#ffd166");
-            spawnDust((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 3);
-            if (other.isPolice) {
+            const cop = a === p.car ? b : a;
+            // Unit normal pointing from player car to police car
+            const pnx = a === p.car ? nx : -nx;
+            const pny = a === p.car ? ny : -ny;
+            const pFx = Math.cos(pCar.angle);
+            const pFy = Math.sin(pCar.angle);
+            const pRx = -pFy;
+            const pRy = pFx;
+            const sideSign = (pnx * pRx + pny * pRy) >= 0 ? 1 : -1;
+
+            // Police car yields and slides aside so player can always push through
+            const pShare = playerAccelInput ? 0.0 : 0.1;
+            const cShare = 1.0 - pShare;
+            pCar.x -= pnx * overlapTotal * pShare;
+            pCar.y -= pny * overlapTotal * pShare;
+            cop.x += pnx * overlapTotal * cShare + pRx * sideSign * overlapTotal * 0.45;
+            cop.y += pny * overlapTotal * cShare + pRy * sideSign * overlapTotal * 0.45;
+            resolveCircleBuildings(cop, 18);
+
+            // Preserve player's forward momentum; shove police car aside
+            const pSpd = Math.hypot(pCar.vx, pCar.vy);
+            if (pSpd > 20 || playerAccelInput) {
+              const pushForce = Math.max(135, pSpd * 0.85);
+              cop.vx = pnx * pushForce * 0.75 + pRx * sideSign * pushForce * 0.9;
+              cop.vy = pny * pushForce * 0.75 + pRy * sideSign * pushForce * 0.9;
+              cop.yieldTimer = 0.48;
+              pCar.vx *= 0.94;
+              pCar.vy *= 0.94;
+            } else {
+              cop.vx = pnx * 85 + pRx * sideSign * 75;
+              cop.vy = pny * 85 + pRy * sideSign * 75;
+              cop.yieldTimer = 0.35;
+            }
+
+            if (relSpeed > 95) {
+              pCar.hp = Math.max(5, pCar.hp - clamp(relSpeed * 0.032, 2, 12));
+              sfx.playCrash(relSpeed / 360);
+              addShake(clamp(relSpeed / 34, 2.5, 9));
+              spawnSparks((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 10, "#ffd166");
+              spawnDust((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 3);
               addWanted(0, Math.max(state.wanted.stars, 2));
             }
+          } else {
+            const overlap = overlapTotal * 0.5;
+            a.x -= nx * overlap;
+            a.y -= ny * overlap;
+            b.x += nx * overlap;
+            b.y += ny * overlap;
+
+            if (relSpeed > 75 && (a === p.car || b === p.car)) {
+              const pCar = a === p.car ? a : b;
+              pCar.hp = Math.max(5, pCar.hp - clamp(relSpeed * 0.04, 2, 16));
+              sfx.playCrash(relSpeed / 360);
+              addShake(clamp(relSpeed / 30, 3, 11));
+              spawnSparks((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 11, "#ffd166");
+              spawnDust((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, 3);
+            }
+            const avgVx = (a.vx + b.vx) * 0.5;
+            const avgVy = (a.vy + b.vy) * 0.5;
+            const push = bothPolice ? 65 : 45;
+            a.vx = lerp(a.vx, avgVx - nx * push, 0.55);
+            a.vy = lerp(a.vy, avgVy - ny * push, 0.55);
+            b.vx = lerp(b.vx, avgVx + nx * push, 0.55);
+            b.vy = lerp(b.vy, avgVy + ny * push, 0.55);
           }
-          const avgVx = (a.vx + b.vx) * 0.5;
-          const avgVy = (a.vy + b.vy) * 0.5;
-          a.vx = lerp(a.vx, avgVx - nx * 45, 0.55);
-          a.vy = lerp(a.vy, avgVy - ny * 45, 0.55);
-          b.vx = lerp(b.vx, avgVx + nx * 45, 0.55);
-          b.vy = lerp(b.vy, avgVy + ny * 45, 0.55);
         }
       }
     }
