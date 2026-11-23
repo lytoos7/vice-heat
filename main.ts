@@ -1,6 +1,6 @@
 // Vice Heat (Port Solana) — make.fun gta6-01 entry hand-in script (Node 22+, stdlib only).
-// `node main.ts` hands the game in (copies game/ and screenshots/ to the output directory and writes dossier.json).
-// `node serve.ts` plays it locally at http://localhost:8080.
+// `node main.ts` hands the game in by copying game/ and screenshots/ into the output directory and writing dossier.json.
+// `node serve.ts` serves the game locally at http://localhost:8080 for local play.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,4 +28,4 @@ writeFileSync(
   }),
 );
 
-console.log(`Vice Heat hand-in written to ${out}`);
+console.log('Vice Heat: dossier.json written.');

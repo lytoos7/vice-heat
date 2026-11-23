@@ -14,6 +14,8 @@ Hand the game in (copies `game/` and `screenshots/` to the output directory and 
 node main.ts
 ```
 
+Running **`node main.ts`** performs the competition hand-in and exits immediately.
+
 To play locally, start the static server and open http://localhost:8080:
 
 ```sh

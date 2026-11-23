@@ -1,5 +1,6 @@
 // Vice Heat — local static server (Node 22+, zero dependencies).
 // Serves the game locally at http://localhost:8080 via: node serve.ts
+// Note: main.ts is the competition hand-in entry; serve.ts is only for local play.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
