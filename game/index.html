@@ -2033,7 +2033,7 @@
     const next = clamp(Math.max(state.wanted.stars + deltaStars, minStars), 0, 6);
     state.wanted.stars = next;
     state.wanted.peakStars = Math.max(state.wanted.peakStars, next);
-    state.wanted.cooldown = 12 + next * 2.5;
+    state.wanted.cooldown = 4;
     state.wanted.spotted = true;
     if (next > prev) {
       showToast(`WANTED LEVEL ${next}★`, 2.0);
@@ -2052,8 +2052,8 @@
 
   function getPoliceSpec(stars) {
     // 1..6 stars scaling; 6 stars is highest top speed and maximum count
-    const counts = [0, 2, 3, 4, 5, 6, 8];
-    const speeds = [0, 265, 305, 345, 390, 430, 475];
+    const counts = [0, 1, 3, 4, 5, 6, 8];
+    const speeds = [0, 185, 305, 345, 390, 430, 475];
     return {
       maxCount: counts[stars] || 0,
       topSpeed: speeds[stars] || 260,
@@ -2389,8 +2389,7 @@
     // Stealing a car is a crime!
     if (!nearest.stolen) {
       nearest.stolen = true;
-      const bump = nearest.isPolice ? 2 : 1;
-      addWanted(0, Math.max(state.wanted.stars, bump));
+      addWanted(0, 1);
       scarePedsNear(nearest.x, nearest.y, 170);
     }
 
@@ -2694,7 +2693,8 @@
     // Maintain police count for current wanted level
     const activePolice = state.cars.filter((c) => c.isPolice && c !== p.car);
     if (stars > 0 && activePolice.length < spec.maxCount) {
-      if (Math.random() < dt * (0.9 + stars * 0.35)) {
+      const spawnRate = stars === 1 ? 0.35 : (0.9 + stars * 0.35);
+      if (Math.random() < dt * spawnRate) {
         spawnPoliceInterceptor(stars);
       }
     }
@@ -2742,12 +2742,14 @@
         }
 
         const diff = wrapAngle(desired - c.angle);
-        c.angle = wrapAngle(c.angle + clamp(diff, -c.turn * dt, c.turn * dt));
+        const turnRate = stars === 1 ? c.turn * 0.65 : c.turn;
+        c.angle = wrapAngle(c.angle + clamp(diff, -turnRate * dt, turnRate * dt));
 
         // Slow down if player is on foot and very close (attempting bust)
         const wantSpeed = (!p.car && dPlayer < 68) ? 38 : c.maxSpeed;
         const curSpd = Math.hypot(c.vx, c.vy);
-        const nextSpd = lerp(curSpd, wantSpeed, clamp(dt * 3.2, 0, 1));
+        const accelRate = stars === 1 ? 1.6 : 3.2;
+        const nextSpd = lerp(curSpd, wantSpeed, clamp(dt * accelRate, 0, 1));
         c.vx = Math.cos(c.angle) * nextSpd;
         c.vy = Math.sin(c.angle) * nextSpd;
         c.x += c.vx * dt;
@@ -3148,13 +3150,13 @@
 
     w.spotted = seen;
     if (seen) {
-      w.cooldown = Math.max(w.cooldown, 10 + w.stars * 2);
+      w.cooldown = 4;
     } else {
       w.cooldown -= dt;
       if (w.cooldown <= 0) {
         w.stars = Math.max(0, w.stars - 1);
         if (w.stars > 0) {
-          w.cooldown = 7.5;
+          w.cooldown = 4;
         } else {
           showToast("HEAT LOST — YOU'RE IN THE CLEAR", 2.2);
           clearWanted();
