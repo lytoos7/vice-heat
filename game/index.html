@@ -593,6 +593,50 @@
     text-shadow: 0 0 14px rgba(94, 242, 165, 0.5);
   }
 
+  #job-start-card {
+    position: absolute;
+    top: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 460px;
+    max-width: calc(100% - 40px);
+    padding: 12px 18px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(22, 15, 42, 0.92), rgba(12, 16, 34, 0.92));
+    border: 1.5px solid rgba(255, 209, 102, 0.65);
+    box-shadow: 0 0 24px rgba(255, 209, 102, 0.22), 0 12px 32px rgba(0, 0, 0, 0.55);
+    text-align: center;
+    pointer-events: none;
+    display: none;
+    z-index: 24;
+  }
+
+  #job-start-card.visible {
+    display: block;
+  }
+
+  .job-card-kicker {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.6px;
+    color: var(--accent-gold);
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+
+  .job-card-name {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 1.4px;
+    color: #ffffff;
+    margin: 0 0 4px 0;
+  }
+
+  .job-card-goal {
+    font-size: 12.5px;
+    color: #e4ddf5;
+  }
+
   .title-sub {
     margin: 0 0 14px 0;
     font-size: 13px;
@@ -798,6 +842,12 @@
     <div class="poster-reward" id="poster-reward">+$500</div>
   </div>
 
+  <div id="job-start-card">
+    <div class="job-card-kicker">NEW JOB // MARINA SOL</div>
+    <div class="job-card-name" id="job-card-name">FIRST WHEELS</div>
+    <div class="job-card-goal" id="job-card-goal">Steal the teal coupe at Palms Mall and deliver it to Moto Works.</div>
+  </div>
+
   <div class="chip" id="dialogue-box">
     <div class="speaker-avatar" id="dialogue-avatar">MS</div>
     <div class="dialogue-body">
@@ -933,6 +983,9 @@
     posterTitle: document.getElementById("poster-title"),
     posterSub: document.getElementById("poster-sub"),
     posterReward: document.getElementById("poster-reward"),
+    jobStartCard: document.getElementById("job-start-card"),
+    jobCardName: document.getElementById("job-card-name"),
+    jobCardGoal: document.getElementById("job-card-goal"),
   };
 
   // Utility
@@ -1217,7 +1270,7 @@
     backAlley: { name: "Back Alley", x: 820, y: 1180 },
     clubSolstice: { name: "Club Solstice", x: 1864, y: 780, dropX: 1858, dropY: 780 },
     docks: { name: "Solana Docks", x: 2230, y: 1360 },
-    beachHideout: { name: "Beach Hideout", x: 2110, y: 280 },
+    beachHideout: { name: "Beach Hideout", x: 2110, y: 292 },
   };
 
   const buildings = [];
@@ -1599,6 +1652,8 @@
     skidMarks: [],
     shake: { mag: 0, x: 0, y: 0 },
     missionCardTimer: 0,
+    jobCardTimer: 0,
+    wrongCarToastCd: 0,
   };
 
   function addShake(amount) {
@@ -1707,6 +1762,24 @@
         ui.missionCard.classList.remove("visible");
       }
     }
+
+    if (state.jobCardTimer > 0) {
+      state.jobCardTimer -= dt;
+      if (state.jobCardTimer <= 0) {
+        ui.jobStartCard.classList.remove("visible");
+      }
+    }
+
+    if (state.wrongCarToastCd > 0) {
+      state.wrongCarToastCd = Math.max(0, state.wrongCarToastCd - dt);
+    }
+  }
+
+  function showJobStartCard(jobName, goalLine) {
+    ui.jobCardName.textContent = jobName;
+    ui.jobCardGoal.textContent = goalLine;
+    ui.jobStartCard.classList.add("visible");
+    state.jobCardTimer = 4.2;
   }
 
   function showMissionPoster(titleText, subText, reward) {
@@ -1891,6 +1964,8 @@
     state.mission.step = 0;
     state.mission.timer = 0;
     state.mission.packagePicked = false;
+    state.mission.pendingIntro = 0;
+    state.wrongCarToastCd = 0;
     state.enemies.length = 0;
 
     if (idx === 0) {
@@ -1903,11 +1978,12 @@
         state.cars.push(coupe);
         state.mission.targetCarId = coupe.id;
       }
+      showJobStartCard("JOB 1: FIRST WHEELS", "Steal the teal coupe at Palms Mall and deliver it to Moto Works.");
       if (showIntro) {
         queueDialogue([
           { speaker: "MARINA SOL // FIXER", avatar: "MS", text: "Welcome to Port Solana. First job is simple: a buyer wants a clean teal coupe parked outside Palms Mall up northwest." },
           { speaker: "MARINA SOL // FIXER", avatar: "MS", text: "Boost the coupe and drive it into Moto Works chop-shop down southwest. $500 cash when it rolls in." }
-        ]);
+        ], () => showJobStartCard("JOB 1: FIRST WHEELS", "Steal the teal coupe at Palms Mall and deliver it to Moto Works."));
       }
     } else if (idx === 1) {
       // Ensure package pickup exists at Docks
@@ -1918,11 +1994,12 @@
       } else {
         pkg.active = true;
       }
+      showJobStartCard("JOB 2: HOT COURIER", "Pick up the package at Solana Docks and deliver it to Club Solstice in 90s.");
       if (showIntro) {
         queueDialogue([
           { speaker: "MARINA SOL // FIXER", avatar: "MS", text: "Clean delivery. Next up: Hot Courier. A smuggler left a package out on the Solana Docks pier to the southeast." },
           { speaker: "MARINA SOL // FIXER", avatar: "MS", text: "Precinct 4 has the pier wired — the second you grab it, you'll pull 2-star heat and have 90 seconds to reach Club Solstice. $900 on drop-off." }
-        ]);
+        ], () => showJobStartCard("JOB 2: HOT COURIER", "Pick up the package at Solana Docks and deliver it to Club Solstice in 90s."));
       }
     } else if (idx === 2) {
       // Ensure pistol pickup in Back Alley if player doesn't have gun yet
@@ -1939,11 +2016,12 @@
       if (state.player.hasGun) {
         state.mission.step = 1;
       }
+      showJobStartCard("JOB 3: SOLSTICE SHOWDOWN", "Grab the Back Alley pistol, clear 3 crew at Club Solstice, and escape to the Beach Hideout.");
       if (showIntro) {
         queueDialogue([
           { speaker: "MARINA SOL // FIXER", avatar: "MS", text: "Final score: Solstice Showdown. The Curator sent three armed enforcers to lock down Club Solstice." },
           { speaker: "MARINA SOL // FIXER", avatar: "MS", text: "Grab the 9mm pistol stashed in the Back Alley, clear all 3 crew members outside the club, then burn out at 3-star heat to the Beach Hideout up northeast. $1,600 payoff." }
-        ]);
+        ], () => showJobStartCard("JOB 3: SOLSTICE SHOWDOWN", "Grab the Back Alley pistol, clear 3 crew at Club Solstice, and escape to the Beach Hideout."));
       }
     } else {
       state.mission.freeRoam = true;
@@ -1982,9 +2060,13 @@
 
     if (idx === 0) {
       state.mission.index = 1;
+      state.mission.step = 0;
+      state.mission.timer = 0;
       state.mission.pendingIntro = 1.9;
     } else if (idx === 1) {
       state.mission.index = 2;
+      state.mission.step = 0;
+      state.mission.timer = 0;
       state.mission.pendingIntro = 1.9;
     } else if (idx === 2) {
       state.mission.index = 3;
@@ -2000,12 +2082,13 @@
 
   function getActiveMissionMarker() {
     const m = state.mission;
-    if (m.freeRoam || m.index >= 3) return null;
+    if (m.freeRoam || m.index >= 3 || m.pendingIntro > 0) return null;
     if (m.index === 0) {
-      if (m.step === 0) {
+      const inTargetCoupe = !!(state.player.car && state.player.car.id === m.targetCarId);
+      if (!inTargetCoupe) {
         const coupe = state.cars.find((c) => c.id === m.targetCarId);
         if (coupe) return { x: coupe.x, y: coupe.y, label: "TEAL COUPE" };
-        return { x: LANDMARKS.palmsMall.lotX, y: LANDMARKS.palmsMall.lotY, label: "PALMS MALL" };
+        return { x: LANDMARKS.palmsMall.lotX, y: LANDMARKS.palmsMall.lotY, label: "TEAL COUPE" };
       }
       return { x: LANDMARKS.chopShop.bayX, y: LANDMARKS.chopShop.bayY, label: "MOTO WORKS" };
     }
@@ -2201,10 +2284,13 @@
     ui.dialogueBox.classList.remove("visible");
     ui.statusBanner.classList.remove("visible");
     ui.missionCard.classList.remove("visible");
+    ui.jobStartCard.classList.remove("visible");
     state.particles.length = 0;
     state.skidMarks.length = 0;
     state.shake.mag = 0;
     state.missionCardTimer = 0;
+    state.jobCardTimer = 0;
+    state.wrongCarToastCd = 0;
     spawnWorldEntities();
   }
 
@@ -2369,6 +2455,9 @@
       resolveCircleBuildings(p, 11);
       c.driver = null;
       p.car = null;
+      if (state.mission.index === 0 && state.mission.pendingIntro <= 0 && c.id === state.mission.targetCarId) {
+        showToast("Left the teal coupe — get back in to deliver it.", 2.8);
+      }
       return;
     }
 
@@ -2401,9 +2490,9 @@
     }
 
     // Mission 1 progress check
-    if (state.mission.index === 0 && state.mission.step === 0 && nearest.id === state.mission.targetCarId) {
+    if (state.mission.index === 0 && state.mission.pendingIntro <= 0 && nearest.id === state.mission.targetCarId) {
       state.mission.step = 1;
-      showToast("GOT THE TEAL COUPE! DELIVER TO MOTO WORKS", 2.8);
+      showToast("Deliver the coupe to the gold ring at Moto Works.", 2.8);
     }
   }
 
@@ -2682,12 +2771,15 @@
       emitSkidMarks(c);
     }
 
-    // Auto-trigger chop-shop respray hint or Mission 1 delivery
-    if (state.mission.index === 0 && state.mission.step === 1 && c.id === state.mission.targetCarId) {
-      if (isInChopShopBay(c.x, c.y)) {
+    // Auto-trigger Mission 1 delivery or wrong-car warning at Moto Works bay
+    if (state.mission.index === 0 && state.mission.pendingIntro <= 0 && isInChopShopBay(c.x, c.y)) {
+      if (c.id === state.mission.targetCarId) {
         c.vx *= 0.2;
         c.vy *= 0.2;
         completeMission(0, 500, "FIRST WHEELS COMPLETE", "Teal coupe delivered to Moto Works.");
+      } else if (state.wrongCarToastCd <= 0) {
+        state.wrongCarToastCd = 3.0;
+        showToast("Wrong car — this job needs the teal coupe.", 3.0);
       }
     }
   }
@@ -3321,29 +3413,32 @@
       if (m.pendingIntro <= 0 && !state.dialogue.active) {
         startMission(m.index, true);
       }
+      return;
     }
 
     // Pickups
     for (const pk of state.pickups) {
       if (!pk.active) continue;
       const d = dist(p.x, p.y, pk.x, pk.y);
-      if (pk.type === "pistol" && d < 32 && !p.car) {
+      if (pk.type === "pistol" && d < 34) {
         pk.active = false;
         p.hasGun = true;
         p.weapon = "pistol";
         p.ammo = 60;
         sfx.playCash();
-        showToast("PICKED UP 9MM PISTOL — AIM WITH MOUSE & CLICK TO SHOOT", 3.0);
         if (m.index === 2 && m.step === 0) {
           m.step = 1;
+          showToast("9mm Pistol acquired — clear 3 of the Curator's crew outside Club Solstice.", 3.2);
+        } else {
+          showToast("Picked up 9mm Pistol — aim with mouse and click to shoot.", 3.0);
         }
         saveGame(true);
-      } else if (pk.type === "package" && m.index === 1 && m.step === 0 && d < 46) {
+      } else if (pk.type === "package" && m.index === 1 && m.step === 0 && d < 48) {
         pk.active = false;
         m.step = 1;
         m.timer = 90;
         addWanted(0, Math.max(state.wanted.stars, 2));
-        showToast("PACKAGE SECURED! 90s TO CLUB SOLSTICE — 2★ HEAT!", 3.2);
+        showToast("Package secured — deliver to the gold ring at Club Solstice in 90s!", 3.2);
       }
     }
 
@@ -3352,9 +3447,9 @@
       m.timer -= dt;
       if (m.timer <= 0) {
         m.timer = 0;
-        showToast("TIME UP! PACKAGE LOST — RETRY FROM DOCKS", 3.0);
+        showToast("Time up! Package lost — return to Solana Docks to retry.", 3.0);
         startMission(1, false);
-      } else if (dist(p.x, p.y, LANDMARKS.clubSolstice.dropX, LANDMARKS.clubSolstice.dropY) < 54) {
+      } else if (dist(p.x, p.y, LANDMARKS.clubSolstice.dropX, LANDMARKS.clubSolstice.dropY) < 56) {
         completeMission(1, 900, "HOT COURIER COMPLETE", "Package delivered to Club Solstice.");
       }
     }
@@ -3366,9 +3461,9 @@
       if (m.step === 1 && aliveCrew === 0) {
         m.step = 2;
         addWanted(0, Math.max(state.wanted.stars, 3));
-        showToast("CREW CLEARED! ESCAPE AT 3★ HEAT TO BEACH HIDEOUT!", 3.4);
+        showToast("Crew cleared — escape at 3-star heat to the Beach Hideout!", 3.4);
       } else if (m.step === 2) {
-        if (dist(p.x, p.y, LANDMARKS.beachHideout.x, LANDMARKS.beachHideout.y) < 62) {
+        if (dist(p.x, p.y, LANDMARKS.beachHideout.x, LANDMARKS.beachHideout.y) < 64) {
           completeMission(2, 1600, "SOLSTICE SHOWDOWN COMPLETE", "Port Solana belongs to you.");
         }
       }
@@ -3409,18 +3504,26 @@
     ui.missionTimer.textContent = "";
     if (m.freeRoam || m.index >= 3) {
       ui.missionTitle.textContent = "FREE ROAM";
-      ui.missionObj.textContent = "Rule Port Solana. Respray at Moto Works ($150) to clear heat.";
+      ui.missionObj.textContent = "Explore Port Solana or visit Moto Works ($150) to clear heat.";
+    } else if (m.pendingIntro > 0) {
+      ui.missionTitle.textContent = "INCOMING CALL";
+      ui.missionObj.textContent = "Stand by for Marina Sol's next job.";
     } else if (m.index === 0) {
       ui.missionTitle.textContent = "JOB 1: FIRST WHEELS";
-      ui.missionObj.textContent = m.step === 0
-        ? "Steal the marked teal coupe at Palms Mall."
-        : "Deliver the teal coupe to Moto Works chop-shop.";
+      const inTargetCoupe = !!(p.car && p.car.id === m.targetCarId);
+      if (inTargetCoupe) {
+        ui.missionObj.textContent = "Deliver the coupe to the gold ring at Moto Works.";
+      } else if (m.step === 1) {
+        ui.missionObj.textContent = "Get back into the teal coupe.";
+      } else {
+        ui.missionObj.textContent = "Steal the teal coupe at Palms Mall.";
+      }
     } else if (m.index === 1) {
       ui.missionTitle.textContent = "JOB 2: HOT COURIER";
       if (m.step === 0) {
-        ui.missionObj.textContent = "Pick up the hot package at Solana Docks.";
+        ui.missionObj.textContent = "Pick up the package at Solana Docks.";
       } else {
-        ui.missionObj.textContent = "Deliver the package to Club Solstice before time expires!";
+        ui.missionObj.textContent = "Deliver the package to the gold ring at Club Solstice.";
         ui.missionTimer.textContent = `${Math.ceil(m.timer)}s`;
       }
     } else if (m.index === 2) {
@@ -3430,7 +3533,7 @@
       } else if (m.step === 1) {
         ui.missionObj.textContent = `Clear the Curator's crew outside Club Solstice (${m.crewRemaining} left).`;
       } else {
-        ui.missionObj.textContent = "Escape at 3-star heat to the Beach Hideout (NE coast).";
+        ui.missionObj.textContent = "Escape at 3-star heat to the Beach Hideout.";
       }
     }
 
@@ -3531,6 +3634,11 @@
 
     // Dusk Vignette Overlay
     drawDuskVignette();
+
+    // Screen-edge arrow pointing to off-screen mission target
+    if (state.mode === "playing") {
+      drawScreenEdgeMissionArrow();
+    }
 
     // Crosshair when aiming pistol on foot
     if (state.mode === "playing" && !state.player.car && state.player.weapon === "pistol" && state.player.hasGun) {
@@ -4215,24 +4323,120 @@
   function drawMissionBeacon() {
     const marker = getActiveMissionMarker();
     if (!marker) return;
-    const p = state.player;
-    const d = dist(p.x, p.y, marker.x, marker.y);
-    if (d < 90) return;
+    const pulse = 1 + Math.sin(state.time * 5.2) * 0.16;
+    const bob = Math.sin(state.time * 4.5) * 4;
 
-    const ang = Math.atan2(marker.y - p.y, marker.x - p.x);
-    const rx = p.x + Math.cos(ang) * 58;
-    const ry = p.y + Math.sin(ang) * 58;
     ctx.save();
-    ctx.translate(rx, ry);
-    ctx.rotate(ang);
+    // Pulsing gold beacon rings directly on the target
+    ctx.shadowColor = "#ffd166";
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = "#ffd166";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(marker.x, marker.y, 26 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(255, 209, 102, 0.55)";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(marker.x, marker.y, 38 * (1 + Math.sin(state.time * 5.2 - 0.8) * 0.14), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Floating gold downward chevron above target
     ctx.fillStyle = "#ffd166";
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.lineTo(-6, -6);
-    ctx.lineTo(-3, 0);
-    ctx.lineTo(-6, 6);
+    ctx.moveTo(marker.x, marker.y - 26 + bob);
+    ctx.lineTo(marker.x - 8, marker.y - 38 + bob);
+    ctx.lineTo(marker.x + 8, marker.y - 38 + bob);
     ctx.closePath();
     ctx.fill();
+
+    // Crisp gold target label pill
+    ctx.shadowBlur = 0;
+    ctx.font = "bold 10px sans-serif";
+    const label = marker.label || "OBJECTIVE";
+    const tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = "rgba(18, 13, 34, 0.86)";
+    ctx.fillRect(marker.x - tw / 2, marker.y - 58 + bob, tw, 16);
+    ctx.strokeStyle = "#ffd166";
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(marker.x - tw / 2, marker.y - 58 + bob, tw, 16);
+    ctx.fillStyle = "#ffd166";
+    ctx.textAlign = "center";
+    ctx.fillText(label, marker.x, marker.y - 46 + bob);
+    ctx.restore();
+  }
+
+  function drawScreenEdgeMissionArrow() {
+    const marker = getActiveMissionMarker();
+    if (!marker) return;
+    const cam = state.camera;
+    const sx = marker.x - cam.x;
+    const sy = marker.y - cam.y;
+
+    // Only show screen-edge arrow when target is off-screen
+    if (sx >= 24 && sx <= VIEW_W - 24 && sy >= 24 && sy <= VIEW_H - 24) return;
+
+    const cx = VIEW_W / 2;
+    const cy = VIEW_H / 2;
+    const dx = sx - cx;
+    const dy = sy - cy;
+    const ang = Math.atan2(dy, dx);
+
+    const padX = 36;
+    const padY = 36;
+    const maxX = cx - padX;
+    const maxY = cy - padY;
+    const scale = Math.min(
+      Math.abs(dx) > 0.001 ? maxX / Math.abs(dx) : 9999,
+      Math.abs(dy) > 0.001 ? maxY / Math.abs(dy) : 9999
+    );
+    let ex = cx + dx * scale;
+    let ey = cy + dy * scale;
+
+    // Keep clear of top-right minimap widget
+    if (ex > VIEW_W - 210 && ey < 168) {
+      if (ex - (VIEW_W - 210) < 168 - ey) ex = VIEW_W - 210;
+      else ey = 168;
+    }
+
+    const pulse = 1 + Math.sin(state.time * 6) * 0.1;
+    const meters = Math.round(dist(state.player.x, state.player.y, marker.x, marker.y) * 0.25);
+
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(ang);
+    ctx.scale(pulse, pulse);
+    ctx.shadowColor = "#ffd166";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#ffd166";
+    ctx.strokeStyle = "#120d22";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(15, 0);
+    ctx.lineTo(-10, -10);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-10, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Small label + distance tucked slightly inward from the edge arrow
+    const lx = clamp(ex - Math.cos(ang) * 26, 68, VIEW_W - 68);
+    const ly = clamp(ey - Math.sin(ang) * 24, 24, VIEW_H - 20);
+    const text = `${marker.label} ${meters}m`;
+    ctx.save();
+    ctx.font = "bold 10px sans-serif";
+    const tw = ctx.measureText(text).width + 12;
+    ctx.fillStyle = "rgba(16, 13, 30, 0.88)";
+    ctx.fillRect(lx - tw / 2, ly - 9, tw, 17);
+    ctx.strokeStyle = "rgba(255, 209, 102, 0.78)";
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(lx - tw / 2, ly - 9, tw, 17);
+    ctx.fillStyle = "#ffd166";
+    ctx.textAlign = "center";
+    ctx.fillText(text, lx, ly + 3);
     ctx.restore();
   }
 
@@ -4298,12 +4502,19 @@
       mctx.fill();
     }
 
-    // Gold mission marker
+    // Gold mission marker (with pulsing ring)
     const marker = getActiveMissionMarker();
     if (marker) {
+      const mp = 1 + Math.sin(state.time * 5.5) * 0.25;
+      mctx.strokeStyle = "rgba(255, 209, 102, 0.75)";
+      mctx.lineWidth = 1.4;
+      mctx.beginPath();
+      mctx.arc(marker.x * sx, marker.y * sy, 6.5 * mp, 0, Math.PI * 2);
+      mctx.stroke();
+
       mctx.fillStyle = "#ffd166";
       mctx.beginPath();
-      mctx.arc(marker.x * sx, marker.y * sy, 4.2, 0, Math.PI * 2);
+      mctx.arc(marker.x * sx, marker.y * sy, 4.4, 0, Math.PI * 2);
       mctx.fill();
       mctx.strokeStyle = "#120d22";
       mctx.lineWidth = 1;
