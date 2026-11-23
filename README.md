@@ -8,8 +8,16 @@ Vice Heat is an original neon-dusk top-down 2D open-world crime game set in Port
 
 ## Run it
 
+Hand the game in (copies `game/` and `screenshots/` to the output directory and writes `dossier.json`):
+
 ```sh
 node main.ts
+```
+
+To play locally, start the static server and open http://localhost:8080:
+
+```sh
+node serve.ts
 ```
 
 ---
